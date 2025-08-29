@@ -1,28 +1,49 @@
+// client.c
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <sys/socket.h>
-#include <sys/un.h>
+#include <arpa/inet.h>
 
-#define SOCKET_PATH "/tmp/example_socket"
+int main(int argc, char *argv[]) {
+    if (argc != 3) {
+        printf("Usage: %s <server_ip> <port>\n", argv[0]);
+        return 1;
+    }
 
-int main() {
-    int client_fd;
-    struct sockaddr_un addr;
-    char message[] = "Hello Server";
-    char buffer[128];
+    int sock;
+    struct sockaddr_in server_addr;
+    char buffer[1024];
 
-    client_fd = socket(AF_UNIX, SOCK_STREAM, 0);
-    memset(&addr, 0, sizeof(addr));
-    addr.sun_family = AF_UNIX;
-    strncpy(addr.sun_path, SOCKET_PATH, sizeof(addr.sun_path) - 1);
+    sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock < 0) { perror("Socket failed"); return 1; }
 
-    connect(client_fd, (struct sockaddr*)&addr, sizeof(addr));
-    send(client_fd, message, strlen(message) + 1, 0);
-    recv(client_fd, buffer, sizeof(buffer), 0);
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(atoi(argv[2]));
+    inet_pton(AF_INET, argv[1], &server_addr.sin_addr);
 
-    printf("Client received: %s\n", buffer);
+    if (connect(sock, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+        perror("Connect failed");
+        return 1;
+    }
 
-    close(client_fd);
+    printf("Connected to server. Commands:\n");
+    printf("BALANCE\nSEND alice bob 200\nQUIT\n\n");
+
+    while (1) {
+        printf("> ");
+        fgets(buffer, sizeof(buffer), stdin);
+        send(sock, buffer, strlen(buffer), 0);
+
+        int n = recv(sock, buffer, sizeof(buffer)-1, 0);
+        if (n <= 0) break;
+        buffer[n] = '\0';
+        printf("%s", buffer);
+
+        if (strstr(buffer, "Goodbye")) break;
+    }
+
+    close(sock);
     return 0;
 }
+
